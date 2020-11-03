@@ -1,0 +1,8 @@
+def ClipL1NormLayer(DesignatedL1Max, Layer, Counter):
+    if Counter == 1:
+        ### this avoids clipping the first layer
+        return
+    L1 = Layer.weight.abs().sum()
+    Layer.weight.masked_scatter_(L1 > DesignatedL1Max, 
+                                Layer.weight*(DesignatedL1Max/L1))
+    return
