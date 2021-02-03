@@ -50,7 +50,7 @@ class OurTrainingData():
         self.Process = process
         self.Parameters = parameters
         if verbose: print('Loading Data Files for Process: ' + str(self.Process) +', with new physics Parameters: ' + str(self.Parameters) ) 
-        if len(self.Parameters)!= 1: print('Only 1D Implemented in Training !')   
+        #if len(self.Parameters)!= 1: print('Only 1D Implemented in Training !')   
           
 ####### Load BSM data (stored in self.BSMDataFiles)
         if type(BSMfilepathlist) == list:
@@ -313,8 +313,8 @@ class OurModel(nn.Module):
             print('Please initialize preprocess parameters!')
             raise ValueError
         with torch.no_grad(): 
-            Data, Parameters = self.Preprocess(Data, Parameters)  
-        
+            Data, Parameters = self.Preprocess(Data, Parameters)
+            
         x1 = x2 = Data
         
         for i, Layer in enumerate(self.LinearLayerList1):
@@ -497,7 +497,8 @@ class OurCDModel(nn.Module):
             print('Please initialize preprocess parameters!')
             raise ValueError
         with torch.no_grad(): 
-            Data, Parameters = self.Preprocess(Data, Parameters)  
+            Data, Parameters = self.Preprocess(Data, Parameters)
+            #print(Parameters)
         
         NumberOfLayers, NumberOfEvents = len(self.Architecture)-1, Data.size(0)
         EntryIterator, NetworkIterator = 0, -1
@@ -578,7 +579,10 @@ class OurCDModel(nn.Module):
             print('Initializing Preprocesses Variables')
             self.Scaling = Data.std(0)
             self.Shift = Data.mean(0)
-            self.ParameterScaling = Parameters.std(0)  
+            self.ParameterScaling = Parameters.std(0) 
+            
+            # deal with zero parameter scaling (for example, in case of 1 redundant param.
+            self.ParameterScaling[self.ParameterScaling == 0.] = 1.0
         else: print('Preprocess can be initialized only once. Parameters unchanged.')
             
     def Preprocess(self, Data, Parameters):
