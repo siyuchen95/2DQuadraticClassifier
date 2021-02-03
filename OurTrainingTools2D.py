@@ -473,16 +473,19 @@ class OurCDModel(nn.Module):
         else:
             print('Architecture should be a list !')
             raise ValueError
-        self.NumberOfParameters = NumberOfParameters
+        self.DefineLayers(NumberOfParameters)
 
 ### Define Layers
-        self.NumberOfNetworks = int((2+NumberOfParameters)*(1+NumberOfParameters)/2)-1
+    def DefineLayers(self, NumberOfParameters):
+        print('====== Defining layers for %d parameters. ======'%(NumberOfParameters))
+        self.NumberOfParameters = NumberOfParameters
+        self.NumberOfNetworks = int((2+self.NumberOfParameters)*(1+self.NumberOfParameters)/2)-1
         LinearLayers = [([nn.Linear(self.Architecture[i], self.Architecture[i+1]) \
                                   for i in range(len(self.Architecture)-1)])\
                         for n in range(self.NumberOfNetworks)]
         LinearLayers = [Layer for SubLayerList in LinearLayers for Layer in SubLayerList]
         self.LinearLayers = nn.ModuleList(LinearLayers)
-        
+    
     def Forward(self, Data, Parameters):
 ### Forward Function. Performs Preprocessing, returns F = rho/(1+rho) in [0,1], where rho is quadratically parametrized.
         # Checking that data has the right input dimension
@@ -496,10 +499,17 @@ class OurCDModel(nn.Module):
         if not hasattr(self, 'Shift'):
             print('Please initialize preprocess parameters!')
             raise ValueError
+        if not hasattr(self, 'IsParamRedundant'):
+            print('Please make sure that you have checked for Parameter redundancy.')
+            raise ValueError
+            
+        if self.IsParamRedundant:
+            #print('Parameter space is redundant.')
+            Parameters = Parameters[:, self.good_parameters]
+            
         with torch.no_grad(): 
-            Data, Parameters = self.Preprocess(Data, Parameters)
-            #print(Parameters)
-        
+            Data, Parameters = self.Preprocess(Data, Parameters)  
+         
         NumberOfLayers, NumberOfEvents = len(self.Architecture)-1, Data.size(0)
         EntryIterator, NetworkIterator = 0, -1
         MatrixLT = torch.zeros([NumberOfEvents, (self.NumberOfParameters+1)**2], dtype=Data.dtype)
@@ -531,7 +541,7 @@ class OurCDModel(nn.Module):
         #print('MatrixLT: '+str(MatrixLT.is_cuda))
         #print('Parameters: '+str(Parameters.is_cuda))
 
-        MatrixLT = MatrixLT.reshape([-1, self.NumberOfParameters+1, self.NumberOfParameters+1])
+        MatrixLT = MatrixLT.reshape([-1, self.NumberOfParameters+1, self.NumberOfParameters+1]) 
         MatrixLTP = MatrixLT.matmul(Parameters.reshape([NumberOfEvents, self.NumberOfParameters+1, 1]))
         rho = MatrixLTP.permute([0, 2, 1]).matmul(MatrixLTP).squeeze()
         
@@ -571,18 +581,44 @@ class OurCDModel(nn.Module):
         with torch.no_grad():
             F = self(points)
         return F/(1-F)
+    
+    def checkRedundancy(self, Parameters):
+### This is written specifically for 2D networks. It will check if any columns of the parameters are redundant 
+### (i.e., full of zeros), and adjust the number of networks as well as the parameters scalings.
+### Of course the Forward function will also check the self.IsParamRedundant attribute to see which Parameters
+### to use.
+
+        print('====== Checking parameter redundancy. ======')
+        
+        Param_idx = torch.arange(Parameters.size(1))
+        zero_idx  = (torch.nonzero(Parameters[0] == Parameters[1]+Parameters[0])) # possible zero columns
+        zero_mask = torch.tensor([len(torch.nonzero(Parameters[:, zero_idx.squeeze()] !=0)
+                                     )!=0 if idx in zero_idx else True for idx in Param_idx])
+        self.IsParamRedundant = (sum(zero_mask) != Parameters.size(1))
+        print('====== IsParamRedundant: ' + str(self.IsParamRedundant))
+        if self.IsParamRedundant:
+            self.good_parameters = torch.nonzero(zero_mask)
+            print('====== Effective parameters: ' + str(list(self.good_parameters)))
+            self.DefineLayers(len(self.good_parameters))
+            
 
     def InitPreprocess(self, Data, Parameters):
 ### This can be run only ONCE to initialize the preprocess (shift and scaling) parameters
 ### Takes as input the training Data and the training Parameters as Torch tensors.
+        
+        # check redunancy
+        self.checkRedundancy(Parameters)
+        
         if not hasattr(self, 'Scaling'):
             print('Initializing Preprocesses Variables')
             self.Scaling = Data.std(0)
             self.Shift = Data.mean(0)
-            self.ParameterScaling = Parameters.std(0) 
-            
-            # deal with zero parameter scaling (for example, in case of 1 redundant param.
-            self.ParameterScaling[self.ParameterScaling == 0.] = 1.0
+            if self.IsParamRedundant:
+                self.ParameterScaling = (Parameters[:, self.good_parameters]).std(0)
+                #print('Parameter scaling: '+str(self.ParameterScaling))
+            else:
+                self.ParameterScaling = Parameters.std(0)
+                #print('Parameter scaling: '+str(self.ParameterScaling))            
         else: print('Preprocess can be initialized only once. Parameters unchanged.')
             
     def Preprocess(self, Data, Parameters):
@@ -594,6 +630,8 @@ class OurCDModel(nn.Module):
         Ones = torch.ones([Parameters.size(0),1], dtype=Parameters.dtype)
         if Parameters.is_cuda:
             Ones = Ones.cuda()
+        #print('Inside Preprocess, Data size: ')
+        #print(Data.size())
         Parameters = torch.cat([Ones, Parameters.reshape(Data.size(0), -1)], dim=1)
         return Data, Parameters
     
@@ -660,6 +698,9 @@ class OurCDModel(nn.Module):
         self.ParameterScaling = self.ParameterScaling.cpu()
         return nn.Module.cpu(self)
 
+
+
+    
     
 
     
