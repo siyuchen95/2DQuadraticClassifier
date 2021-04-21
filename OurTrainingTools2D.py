@@ -504,12 +504,11 @@ class OurCDModel(nn.Module):
             raise ValueError
             
         if self.IsParamRedundant:
-            #print('Parameter space is redundant.')
             Parameters = Parameters[:, self.good_parameters]
             
         with torch.no_grad(): 
             Data, Parameters = self.Preprocess(Data, Parameters)  
-         
+        
         NumberOfLayers, NumberOfEvents = len(self.Architecture)-1, Data.size(0)
         EntryIterator, NetworkIterator = 0, -1
         MatrixLT = torch.zeros([NumberOfEvents, (self.NumberOfParameters+1)**2], dtype=Data.dtype)
@@ -587,7 +586,6 @@ class OurCDModel(nn.Module):
 ### (i.e., full of zeros), and adjust the number of networks as well as the parameters scalings.
 ### Of course the Forward function will also check the self.IsParamRedundant attribute to see which Parameters
 ### to use.
-
         print('====== Checking parameter redundancy. ======')
         
         Param_idx = torch.arange(Parameters.size(1))
@@ -615,23 +613,26 @@ class OurCDModel(nn.Module):
             self.Shift = Data.mean(0)
             if self.IsParamRedundant:
                 self.ParameterScaling = (Parameters[:, self.good_parameters]).std(0)
-                #print('Parameter scaling: '+str(self.ParameterScaling))
             else:
-                self.ParameterScaling = Parameters.std(0)
-                #print('Parameter scaling: '+str(self.ParameterScaling))            
+                self.ParameterScaling = Parameters.std(0)            
+            #self.ParameterScaling = self.ParameterScaling[.std(0
+            #                    ) if self.IsParamRedundant else Parameters.std(0)  
         else: print('Preprocess can be initialized only once. Parameters unchanged.')
+        
             
     def Preprocess(self, Data, Parameters):
 ### Returns scaled/shifted data and parameters
 ### Takes as input Data and Parameters as Torch tensors.
         if  not hasattr(self, 'Scaling'): print('Preprocess parameters are not initialized.')
+        #print('Data device: '+str(Data.device))
+        #print('Shift device: '+str(self.Shift.device))
+        #print('Parameters device: '+str(Parameters.device))
+        #print('ParameterScaling device: '+str(self.ParameterScaling.device))
         Data = (Data - self.Shift)/self.Scaling
         Parameters = Parameters/self.ParameterScaling
         Ones = torch.ones([Parameters.size(0),1], dtype=Parameters.dtype)
         if Parameters.is_cuda:
             Ones = Ones.cuda()
-        #print('Inside Preprocess, Data size: ')
-        #print(Data.size())
         Parameters = torch.cat([Ones, Parameters.reshape(Data.size(0), -1)], dim=1)
         return Data, Parameters
     
@@ -699,9 +700,6 @@ class OurCDModel(nn.Module):
         return nn.Module.cpu(self)
 
 
-
-    
-    
 
     
 import copy
